@@ -917,4 +917,221 @@
             const endTime = document.getElementById('endTime').value;
             const explanation = document.getElementById('explanation').value;
 
-            if (!startTime || !endTime || !explanation.trim())
+            if (!startTime || !endTime || !explanation.trim()) {
+                alert('Please fill in all fields!');
+                return;
+            }
+
+            const start = new Date(startTime);
+            const end = new Date(endTime);
+
+            if (end <= start) {
+                alert('End time must be after start time!');
+                return;
+            }
+
+            const duration = end - start;
+            const session = {
+                id: Date.now(),
+                type: type,
+                startTime: start,
+                endTime: end,
+                duration: duration,
+                explanation: explanation.trim(),
+                date: start.toDateString()
+            };
+
+            userData[currentUser].sessions.push(session);
+            updateDisplay();
+            updateUserStats();
+            clearForm();
+            alert('Session added successfully!');
+        }
+
+        function startCurrentSession() {
+            const type = document.getElementById('activityType').value;
+            const explanation = document.getElementById('explanation').value;
+
+            if (!explanation.trim()) {
+                alert('Please provide an explanation before starting!');
+                return;
+            }
+
+            userData[currentUser].currentSession = {
+                type: type,
+                startTime: new Date(),
+                explanation: explanation.trim()
+            };
+
+            document.getElementById('currentSession').style.display = 'block';
+            document.getElementById('sessionInfo').textContent = `${type === 'study' ? '📚' : '🎮'} ${type.charAt(0).toUpperCase() + type.slice(1)}: ${explanation}`;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+
+            // Start timer
+            timerInterval = setInterval(updateTimer, 1000);
+            updateTimer();
+        }
+
+        function stopCurrentSession() {
+            if (!userData[currentUser].currentSession) return;
+
+            const endTime = new Date();
+            const duration = endTime - userData[currentUser].currentSession.startTime;
+
+            const session = {
+                id: Date.now(),
+                type: userData[currentUser].currentSession.type,
+                startTime: userData[currentUser].currentSession.startTime,
+                endTime: endTime,
+                duration: duration,
+                explanation: userData[currentUser].currentSession.explanation,
+                date: userData[currentUser].currentSession.startTime.toDateString()
+            };
+
+            userData[currentUser].sessions.push(session);
+            userData[currentUser].currentSession = null;
+
+            document.getElementById('currentSession').style.display = 'none';
+            document.getElementById('startBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+
+            clearInterval(timerInterval);
+            updateDisplay();
+            updateUserStats();
+            clearForm();
+            alert('Session completed and saved!');
+        }
+
+        function updateTimer() {
+            if (!userData[currentUser].currentSession) return;
+
+            const now = new Date();
+            const elapsed = now - userData[currentUser].currentSession.startTime;
+            const hours = Math.floor(elapsed / 3600000);
+            const minutes = Math.floor((elapsed % 3600000) / 60000);
+            const seconds = Math.floor((elapsed % 60000) / 1000);
+
+            document.getElementById('timer').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateDisplay() {
+            updateStats();
+            updateSessionList();
+        }
+
+        function updateStats() {
+            const sessions = userData[currentUser].sessions;
+            let totalStudyTime = 0;
+            let totalPlayTime = 0;
+
+            sessions.forEach(session => {
+                if (session.type === 'study') {
+                    totalStudyTime += session.duration;
+                } else {
+                    totalPlayTime += session.duration;
+                }
+            });
+
+            document.getElementById('totalStudyTime').textContent = formatDuration(totalStudyTime);
+            document.getElementById('totalPlayTime').textContent = formatDuration(totalPlayTime);
+            document.getElementById('totalSessions').textContent = sessions.length;
+        }
+
+        function filterSessions(filter) {
+            currentFilter = filter;
+            
+            // Update active button
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            updateSessionList();
+        }
+
+        function updateSessionList() {
+            const sessionList = document.getElementById('sessionList');
+            const sessions = userData[currentUser].sessions;
+            
+            if (sessions.length === 0) {
+                sessionList.innerHTML = '<div class="no-data">No sessions recorded yet. Start tracking your activities!</div>';
+                return;
+            }
+
+            let filteredSessions = [...sessions];
+
+            // Apply filters
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const weekAgo = new Date(today);
+            weekAgo.setDate(today.getDate() - 7);
+
+            switch (currentFilter) {
+                case 'study':
+                    filteredSessions = filteredSessions.filter(s => s.type === 'study');
+                    break;
+                case 'play':
+                    filteredSessions = filteredSessions.filter(s => s.type === 'play');
+                    break;
+                case 'today':
+                    filteredSessions = filteredSessions.filter(s => s.startTime >= today);
+                    break;
+                case 'week':
+                    filteredSessions = filteredSessions.filter(s => s.startTime >= weekAgo);
+                    break;
+            }
+
+            const sortedSessions = filteredSessions.sort((a, b) => b.startTime - a.startTime);
+            
+            if (sortedSessions.length === 0) {
+                sessionList.innerHTML = '<div class="no-data">No sessions match the current filter.</div>';
+                return;
+            }
+
+            sessionList.innerHTML = sortedSessions.map(session => `
+                <div class="session-item ${session.type}">
+                    <div class="session-header">
+                        <span class="session-type ${session.type}">${session.type === 'study' ? '📚' : '🎮'} ${session.type.charAt(0).toUpperCase() + session.type.slice(1)}</span>
+                        <span class="session-duration">${formatDuration(session.duration)}</span>
+                    </div>
+                    <div><strong>Time:</strong> ${session.startTime.toLocaleString()} - ${session.endTime.toLocaleString()}</div>
+                    <div class="session-explanation">${session.explanation}</div>
+                </div>
+            `).join('');
+        }
+
+        function formatDuration(ms) {
+            const hours = Math.floor(ms / 3600000);
+            const minutes = Math.floor((ms % 3600000) / 60000);
+            return `${hours}h ${minutes}m`;
+        }
+
+        function clearForm() {
+            document.getElementById('explanation').value = '';
+            setCurrentTime();
+        }
+
+        // Event listeners for Enter key
+        document.getElementById('goalInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addGoal();
+            }
+        });
+
+        document.getElementById('rewardInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addReward();
+            }
+        });
+
+        document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+
+        // Initialize the app
+        setCurrentTime();
+
+        // Update current time every minute
+        setInterval(setCurrentTime, 60000);
